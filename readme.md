@@ -2,10 +2,6 @@
 #### Step 0: Prerequisites
 Install [SAM2](https://github.com/facebookresearch/sam2) first.
 
-##### Example
-```bash
-Box and Blocks_ZHAE_Affected_FU_attempts % ffmpeg -i Box\ and\ Blocks_ZHAE_Affected_FU_0.mp4 -vf reverse -af areverse Box\ and\ Blocks_ZHAE_Affected_FU_0_reversed.mp4
-```
 
 #### Step 1: Label the blocks
 Back to this directory, you can run `python view.py` to start the labeling process. The script will load the reversed videos and allow you to label the blocks by drawing bounding boxes around them. The labeled frames will be saved in the `images/` directory. Once you finished labeling, you can press `s` to save the labels. The labels will be saved in a JSON file named `labels.json`.
