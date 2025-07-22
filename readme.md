@@ -25,7 +25,7 @@ The first click should be positive and once you click, you cannot include any fr
 
 ##### Example
 ```bash
-block_detection % python view.py ../../outputs/Box\ and\ Blocks_ZHAE_Affected_FU_attempts/Box\ and\ Blocks_ZHAE_Affected_FU_0_reversed.mp4
+block_detection % python view.py robovid.mp4
 ```
 
 #### Optional Step 4: check the labels
