@@ -1,4 +1,10 @@
-### labeling pipeline
+### Video Labeler
+[Quick Start](#step-0-prerequisites).
+
+### TO DO 
+- [ ] Need to support angled bounding boxes
+- [ ] Need to be able to track multiple objects
+
 #### Step 0: Prerequisites
 Install [SAM2](https://github.com/facebookresearch/sam2) first.
 Then install the requirements by running:
