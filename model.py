@@ -12,7 +12,7 @@ import os
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 import numpy as np
 import torch
-from PIL import Image
+
 from sam2.build_sam import build_sam2_video_predictor
 
 
