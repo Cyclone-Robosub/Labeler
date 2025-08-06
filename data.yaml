@@ -1,0 +1,7 @@
+path: /home/kid/roboSub/Labeler/dataset # dataset root dir
+train: /home/kid/roboSub/Labeler/dataset/room # train images (relative to 'path') 118287 images
+val: /home/kid/roboSub/Labeler/dataset/kitchen
+
+# Classes
+names:
+  0: white_box
