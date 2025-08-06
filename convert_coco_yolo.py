@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+import sys
 
 def coco_to_yolo_bbox(coco_bbox, img_width, img_height):
     """
@@ -141,10 +142,18 @@ names: {class_names}  # class names
 
 # Example usage
 if __name__ == "__main__":
+    
+    # Get folder name from command line arguments
+    if len(sys.argv) < 2:
+        print("Usage: python convert_coco_yolo.py <folder_name>")
+        sys.exit(1)
+    
+    folder_name = sys.argv[1]
+    
     # Example usage
-    coco_json_path = "Subj_04_Left_RedPhone_0_reversed/labels.json"
-    output_dir = "Subj_04_Left_RedPhone_0_reversed/yolo"
-    # yaml_path = "Subj_04_Left_RedPhone_0_reversed/dataset.yaml"
+    coco_json_path = f"{folder_name}/labels.json"
+    output_dir = f"{folder_name}/yolo"
+    # yaml_path = f"{folder_name}/dataset.yaml"
     
     # Convert annotations
     convert_coco_to_yolo(coco_json_path, output_dir)
