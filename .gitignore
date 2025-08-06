@@ -2,3 +2,5 @@ dataset
 *.pt
 *.zip
 __pycache__
+*.jpg
+*.txt

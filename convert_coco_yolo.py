@@ -142,9 +142,9 @@ names: {class_names}  # class names
 # Example usage
 if __name__ == "__main__":
     # Example usage
-    coco_json_path = "/home/kid/roboSub/Labeler/kitchen/labels.json"
-    output_dir = "/home/kid/roboSub/Labeler/kitchen/yolo"
-    yaml_path = "/home/kid/roboSub/Labeler/kitchen/dataset.yaml"
+    coco_json_path = "Subj_04_Left_RedPhone_0_reversed/labels.json"
+    output_dir = "Subj_04_Left_RedPhone_0_reversed/yolo"
+    yaml_path = "Subj_04_Left_RedPhone_0_reversed/dataset.yaml"
     
     # Convert annotations
     convert_coco_to_yolo(coco_json_path, output_dir)

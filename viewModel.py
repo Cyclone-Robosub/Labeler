@@ -124,6 +124,7 @@ class BlockLabeler:
         self.labeler = None
         self.anno_start_idx = None
         self.current_frame = None
+        self.video_name = os.path.basename(video_path).split('.')[0]
 
         if not self.cap.isOpened():
             raise ValueError(f"Cannot open video: {video_path}")
@@ -170,7 +171,7 @@ class BlockLabeler:
         print(f"Extracting frames from {self.anno_start_idx} to end of video...")
 
         # Create a temporary directory to store frames
-        self.frame_dir = "images"
+        self.frame_dir = self.video_name + "/frames/"
         os.makedirs(self.frame_dir, exist_ok=True)
         # remove existing frames
         for f in os.listdir(self.frame_dir):
@@ -196,7 +197,7 @@ class BlockLabeler:
 
     def init_labeler(self):
         """Initialize the Labeler with the current video"""
-        self.labeler = Labeler("../../CMORE/ML_models/sam2.1_hiera_large.pt")
+        self.labeler = Labeler("sam2_checkpoint/sam2.1_hiera_large.pt")
         self.labeler.init_inference_state(video_dir=self.frame_dir)
         print("Labeler initialized with video frames.")
 
@@ -301,7 +302,16 @@ class BlockLabeler:
 
     def save_labels(self, start_idx, end_idx):
         block_dataset = COCODataset("block_detection_dataset", "block")
+        
+        # make each file name unique, prefix with video name
 
+        # rename the files in the images directory
+        for i in range(len(self.frame_names)):
+            old_name = os.path.join(self.frame_dir, self.frame_names[i])
+            new_name = os.path.join(self.frame_dir, f"{self.video_name}_{self.frame_names[i]}")
+            os.rename(old_name, new_name)
+            self.frame_names[i] = new_name
+        
 
         for i in range(start_idx, end_idx + 1):
             block_dataset.add_sam_mask(
@@ -309,4 +319,4 @@ class BlockLabeler:
                 image_path=self.frame_names[i]
             )
 
-        block_dataset.export_to_json("labels.json")
+        block_dataset.export_to_json(os.path.join(self.video_name, "labels.json"))
