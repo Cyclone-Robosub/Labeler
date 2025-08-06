@@ -8,7 +8,10 @@ results = model.train(
     data="/home/kid/roboSub/Labeler/data.yaml", 
     epochs=300,
     patience=30,
-    imgsz=640, 
+
+    imgsz=512,
+    batch=128,
+
     device="cuda",
     project="Block detector",
     # save_period=10,
