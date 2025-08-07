@@ -24,6 +24,9 @@ class COCODataset:
         }
         self.category_id_map = {}  # Maps object_name -> category_id
         self.next_category_id = 1
+        self.image_id_map = {}     # Maps image_filename -> image_id to prevent duplicates
+        self.next_image_id = 1
+        self.next_annotation_id = 1
     
     def add_category(self, object_name: str) -> int:
         """Add a new category and return its ID"""
@@ -41,6 +44,28 @@ class COCODataset:
         
         self.category_id_map[object_name] = category_id
         return category_id
+    
+    def get_or_create_image(self, image_path: str, width: int, height: int) -> int:
+        """Get existing image ID or create new image entry. Returns image_id."""
+        filename = os.path.basename(image_path)
+        
+        # Check if image already exists
+        if filename in self.image_id_map:
+            return self.image_id_map[filename]
+        
+        # Create new image entry
+        image_id = self.next_image_id
+        self.next_image_id += 1
+        
+        self.coco_dataset["images"].append({
+            "id": image_id,
+            "file_name": filename,
+            "width": width,
+            "height": height
+        })
+        
+        self.image_id_map[filename] = image_id
+        return image_id
 
     def mask_to_bbox(self, mask):
         """Convert binary mask to bounding box [x, y, width, height]"""
@@ -61,15 +86,18 @@ class COCODataset:
         x, y, w, h = self.mask_to_bbox(mask)
         area = w * h
 
-        return {
-            "id": len(self.coco_dataset["annotations"]) + 1,
-            "image_id": None,  # To be set when adding the image
+        annotation = {
+            "id": self.next_annotation_id,
+            "image_id": None,  # To be set when adding the annotation
             "category_id": category_id,
             "segmentation": None,
             "area": area,
             "bbox": [x, y, w, h],
             "iscrowd": 0
         }
+        
+        self.next_annotation_id += 1
+        return annotation
     
     def add_sam_mask(self, mask, image_path, object_name: str):
         """
@@ -85,30 +113,15 @@ class COCODataset:
         # Get or create category ID for this object
         category_id = self.add_category(object_name)
         
-        annotation = self.convert_mask_to_annotation(mask, category_id)
+        # Get or create image entry (prevents duplicates)
+        image_id = self.get_or_create_image(image_path, mask.shape[1], mask.shape[0])
         
-        self.add_image(image_path, mask.shape[1], mask.shape[0], annotation)
-
-    def add_image(self, image_path, width, height, annotation=None):
-        """
-        Add an image to the dataset.
-
-        Args:
-            image_path (str): Path to the image file.
-            annotations (list, optional): List of annotations for the image.
-        """
-        image_id = len(self.coco_dataset["images"]) + 1
-        self.coco_dataset["images"].append({
-            "id": image_id,
-            "file_name": os.path.basename(image_path),
-            "width": width,
-            "height": height
-        })
-
-        if annotation:
-            # expect a single annotation for the single object
-            annotation["image_id"] = image_id
-            self.coco_dataset["annotations"].append(annotation)
+        # Create annotation
+        annotation = self.convert_mask_to_annotation(mask, category_id)
+        annotation["image_id"] = image_id
+        
+        # Add annotation to dataset
+        self.coco_dataset["annotations"].append(annotation)
 
     def export_to_json(self, output_path):
         """
