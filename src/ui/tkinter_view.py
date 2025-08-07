@@ -28,6 +28,8 @@ class VideoCanvas(tk.Canvas):
         
         # Listen to viewmodel changes
         self.viewmodel.add_observer("current_frame_index", self._on_frame_changed)
+        self.viewmodel.add_observer("annotation_added", self._on_annotation_added)
+        self.viewmodel.add_observer("annotation_removed", self._on_annotation_removed)
     
     def update_frame(self, frame: Optional[np.ndarray]):
         """Update the canvas with a new frame"""
@@ -122,6 +124,16 @@ class VideoCanvas(tk.Canvas):
         """Handle frame change from viewmodel"""
         frame = self.viewmodel.get_current_frame_with_overlay()
         self.update_frame(frame)
+    
+    def _on_annotation_added(self, property_name: str, old_value, new_value):
+        """Handle new annotation added - immediately show the point and mask"""
+        frame = self.viewmodel.get_current_frame_with_overlay()
+        self.update_frame(frame)
+    
+    def _on_annotation_removed(self, property_name: str, old_value, new_value):
+        """Handle annotation removed - update the display"""
+        frame = self.viewmodel.get_current_frame_with_overlay()
+        self.update_frame(frame)
 
 
 class ControlPanel(ttk.Frame):
@@ -144,6 +156,17 @@ class ControlPanel(ttk.Frame):
         ttk.Button(controls_frame, text="◀", command=self._previous_frame).pack(side=tk.LEFT, padx=2)
         ttk.Button(controls_frame, text="▶", command=self._next_frame).pack(side=tk.LEFT, padx=2)
         ttk.Button(controls_frame, text="▶▶", command=self._jump_to_end).pack(side=tk.LEFT, padx=2)
+        
+        # Annotation controls
+        annotation_frame = ttk.Frame(self)
+        annotation_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        self.undo_button = ttk.Button(
+            annotation_frame, 
+            text="↶ Undo Last Point", 
+            command=self._undo_last_point
+        )
+        self.undo_button.pack(side=tk.LEFT, padx=2)
         
         # Frame info
         info_frame = ttk.Frame(self)
@@ -168,15 +191,34 @@ class ControlPanel(ttk.Frame):
         )
         self.frame_slider.pack(fill=tk.X)
         
-        # Status
+        # Status with auto-propagation indicator
+        status_frame = ttk.Frame(self)
+        status_frame.pack(fill=tk.X, padx=5, pady=5)
+        
         self.status_var = tk.StringVar(value="Ready")
-        ttk.Label(self, textvariable=self.status_var).pack(pady=5)
+        self.status_label = ttk.Label(status_frame, textvariable=self.status_var)
+        self.status_label.pack(side=tk.LEFT)
+        
+        # Auto-propagation indicator
+        self.propagation_var = tk.StringVar(value="")
+        self.propagation_label = ttk.Label(
+            status_frame, 
+            textvariable=self.propagation_var,
+            foreground="green"
+        )
+        self.propagation_label.pack(side=tk.RIGHT)
     
     def _bind_viewmodel(self):
         """Bind to viewmodel observable properties"""
         self.viewmodel.add_observer("current_frame_index", self._update_frame_info)
         self.viewmodel.add_observer("status_message", self._update_status)
         self.viewmodel.add_observer("video_loaded", self._update_for_new_video)
+        self.viewmodel.add_observer("is_processing", self._update_processing_state)
+        self.viewmodel.add_observer("annotation_removed", self._update_undo_button)
+    
+    def _undo_last_point(self):
+        """Trigger undo of last point annotation"""
+        self.viewmodel.undo_point_command.execute()
     
     def _previous_frame(self):
         self.viewmodel.previous_frame_command.execute()
@@ -209,10 +251,40 @@ class ControlPanel(ttk.Frame):
         if total_frames > 0:
             self.frame_slider.configure(to=total_frames - 1)
             self.frame_slider.set(current_frame)
+        
+        # Update propagation indicator when frame changes
+        self._update_propagation_indicator()
     
     def _update_status(self, property_name: str, old_value, new_value):
         """Update status message"""
         self.status_var.set(new_value)
+    
+    def _update_processing_state(self, property_name: str, old_value, new_value):
+        """Update UI elements based on processing state"""
+        # Disable undo button during processing or when no points to undo
+        if hasattr(self, 'undo_button'):
+            can_undo = (not new_value and 
+                       hasattr(self.viewmodel, '_can_undo_point') and 
+                       self.viewmodel._can_undo_point())
+            self.undo_button.configure(state='normal' if can_undo else 'disabled')
+        
+        # Update propagation indicator
+        self._update_propagation_indicator()
+    
+    def _update_undo_button(self, property_name: str, old_value, new_value):
+        """Update undo button state when annotations change"""
+        if hasattr(self, 'undo_button'):
+            can_undo = (hasattr(self.viewmodel, '_can_undo_point') and 
+                       self.viewmodel._can_undo_point())
+            self.undo_button.configure(state='normal' if can_undo else 'disabled')
+    
+    def _update_propagation_indicator(self):
+        """Update the propagation indicator based on viewmodel state"""
+        if (hasattr(self.viewmodel, 'needs_propagation') and 
+            self.viewmodel.needs_propagation):
+            self.propagation_var.set("🔄 Auto-propagate on frame change")
+        else:
+            self.propagation_var.set("")
     
     def _update_for_new_video(self, property_name: str, old_value, new_value):
         """Update UI when new video is loaded"""
@@ -311,9 +383,15 @@ class MenuBar(tk.Menu):
             "Controls:\n"
             "• Left click: Add positive point\n"
             "• Right click: Add negative point\n"
+            "• Ctrl+Z: Undo last point\n"
             "• Left/Right arrows: Navigate frames\n"
             "• Space: Next frame\n"
-            "• Use File menu to open/save"
+            "• Use File menu to open/save\n\n"
+            "Workflow:\n"
+            "• Click multiple points on same object\n"
+            "• See immediate mask updates\n"
+            "• Navigate frames to auto-propagate\n"
+            "• Use undo to refine selections"
         )
     
     def _exit_app(self):
@@ -365,6 +443,9 @@ class VideoLabelerApp(tk.Tk):
         self.bind("<Left>", lambda e: self.viewmodel.previous_frame_command.execute())
         self.bind("<Right>", lambda e: self.viewmodel.next_frame_command.execute())
         self.bind("<space>", lambda e: self.viewmodel.next_frame_command.execute())
+        
+        # Undo shortcut
+        self.bind("<Control-z>", lambda e: self.viewmodel.undo_point_command.execute())
         
         # Make sure the window can receive focus for key events
         self.focus_set()

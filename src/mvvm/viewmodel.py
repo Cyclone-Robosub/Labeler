@@ -43,6 +43,8 @@ class VideoLabelerViewModel(Observable):
         self.previous_frame_command = Command(self._previous_frame, self._has_video)
         self.jump_to_frame_command = Command(self._jump_to_frame, self._has_video)
         self.add_point_command = Command(self._add_point, self._can_add_point)
+        self.undo_point_command = Command(self._undo_last_point, self._can_undo_point)
+        self.propagate_command = Command(self._propagate_annotations, self._can_propagate)
         self.save_annotations_command = Command(self._save_annotations, self._has_annotations)
         self.export_coco_command = Command(self._export_coco, self._has_annotations)
         
@@ -73,6 +75,11 @@ class VideoLabelerViewModel(Observable):
     def has_annotations(self) -> bool:
         return (self.current_session is not None and 
                 (len(self.current_session.points) > 0 or len(self.current_session.masks) > 0))
+    
+    @property
+    def needs_propagation(self) -> bool:
+        return (self.current_session is not None and 
+                self.current_session.needs_propagation)
     
     @property
     def current_frame_points(self) -> List[Point]:
@@ -142,12 +149,18 @@ class VideoLabelerViewModel(Observable):
     def _next_frame(self):
         """Advance to next frame"""
         if self.current_frame_index < self.total_frames - 1:
+            # Check if we need to propagate before moving
+            self._propagate_if_needed()
+            
             self.current_frame_index += 1
             self._current_frame = None  # Force reload
     
     def _previous_frame(self):
         """Go to previous frame"""
         if self.current_frame_index > 0:
+            # Check if we need to propagate before moving
+            self._propagate_if_needed()
+            
             self.current_frame_index -= 1
             self._current_frame = None  # Force reload
     
@@ -155,6 +168,9 @@ class VideoLabelerViewModel(Observable):
         """Jump to specific frame"""
         frame_index = max(0, min(frame_index, self.total_frames - 1))
         if frame_index != self.current_frame_index:
+            # Check if we need to propagate before moving
+            self._propagate_if_needed()
+            
             self.current_frame_index = frame_index
             self._current_frame = None  # Force reload
     
@@ -171,8 +187,12 @@ class VideoLabelerViewModel(Observable):
             if not self.current_session.is_initialized:
                 self._initialize_annotation_session()
             
-            # Create point with absolute frame index for storage
-            point = Point(x=x, y=y, label=label, frame_index=self.current_frame_index)
+            # Create point with absolute frame index and current object ID
+            point = Point(
+                x=x, y=y, label=label, 
+                frame_index=self.current_frame_index,
+                object_id=self.current_session.current_object_id
+            )
             
             # Add to session
             self.current_session.add_point(point)
@@ -180,16 +200,57 @@ class VideoLabelerViewModel(Observable):
             # Calculate relative frame index for SAM2 (relative to annotation start)
             relative_frame_idx = self.current_frame_index - self.current_session.start_frame
             
-            # Create a temporary point with relative frame index for annotation service
-            relative_point = Point(x=x, y=y, label=label, frame_index=relative_frame_idx)
+            # Get all points for the current object on this frame
+            all_points_for_object = self.current_session.get_all_points_for_current_object_on_frame(
+                self.current_frame_index
+            )
             
-            # Generate mask using annotation service
-            mask = self.annotation_service.add_point_annotation(relative_point)
+            # Convert to relative frame indices for SAM2
+            relative_points = []
+            for p in all_points_for_object:
+                rel_frame_idx = p.frame_index - self.current_session.start_frame
+                relative_points.append(Point(
+                    x=p.x, y=p.y, label=p.label, 
+                    frame_index=rel_frame_idx, object_id=p.object_id
+                ))
+            
+            # Generate mask using annotation service with all points for this object
+            mask = self.annotation_service.add_point_annotation(
+                point=relative_points[-1],  # The new point (with relative frame index)
+                all_points_for_object=relative_points
+            )
+            
             # Update mask to use absolute frame index for storage
             mask.frame_index = self.current_frame_index
+            mask.object_id = self.current_session.current_object_id
             self.current_session.add_mask(mask)
             
-            # Propagate through video
+            # Force UI update to show immediate mask result - this will trigger observers
+            self._current_frame = None  # Force reload with overlay
+            self.notify_observers("annotation_added", None, {"point": point, "mask": mask})
+            
+            point_type = "positive" if label == 1 else "negative"
+            self.status_message = f"Added {point_type} point at ({x}, {y}) - Mask updated"
+            
+            # Mark that we need to propagate when frame changes
+            self.current_session.needs_propagation = True
+            
+        except Exception as e:
+            self.status_message = f"Error adding annotation: {str(e)}"
+            raise
+        finally:
+            self.is_processing = False
+    
+    def _propagate_if_needed(self):
+        """Propagate annotations through video if needed"""
+        if not self.current_session or not self.current_session.needs_propagation:
+            return
+        
+        try:
+            self.is_processing = True
+            self.status_message = "Propagating annotations through video..."
+            
+            # Run propagation through the entire video
             all_masks = self.annotation_service.propagate_annotations()
             
             # Update session with all masks, converting relative to absolute frame indices
@@ -200,11 +261,12 @@ class VideoLabelerViewModel(Observable):
                     mask.frame_index = absolute_frame_idx
                     self.current_session.add_mask(mask)
             
-            self._current_frame = None  # Force reload with overlay
-            self.status_message = f"Added point annotation at ({x}, {y})"
+            # Clear the propagation flag
+            self.current_session.needs_propagation = False
+            self.status_message = "Video propagation complete"
             
         except Exception as e:
-            self.status_message = f"Error adding annotation: {str(e)}"
+            self.status_message = f"Error during propagation: {str(e)}"
             raise
         finally:
             self.is_processing = False
@@ -246,6 +308,15 @@ class VideoLabelerViewModel(Observable):
             self.status_message = f"Error saving annotations: {str(e)}"
             raise
     
+    def _propagate_annotations(self):
+        """Manually trigger annotation propagation through video"""
+        if not self.current_session:
+            return
+        
+        # Force propagation even if not marked as needed
+        self.current_session.needs_propagation = True
+        self._propagate_if_needed()
+    
     def _export_coco(self, output_path: str, category_name: str = "block"):
         """Export annotations in COCO format"""
         if not self.current_session:
@@ -259,6 +330,71 @@ class VideoLabelerViewModel(Observable):
             self.status_message = f"Error exporting to COCO: {str(e)}"
             raise
     
+    def _undo_last_point(self):
+        """Undo the last point annotation"""
+        if not self.current_session:
+            return
+        
+        try:
+            self.is_processing = True
+            self.status_message = "Undoing last point..."
+            
+            # Remove the last point
+            removed_point = self.current_session.remove_last_point()
+            if not removed_point:
+                self.status_message = "No points to undo"
+                return
+            
+            # Get remaining points for the current object on this frame
+            remaining_points = self.current_session.get_all_points_for_current_object_on_frame(
+                self.current_frame_index
+            )
+            
+            if remaining_points:
+                # Re-generate mask with remaining points
+                relative_frame_idx = self.current_frame_index - self.current_session.start_frame
+                
+                # Convert to relative frame indices for SAM2
+                relative_points = []
+                for p in remaining_points:
+                    rel_frame_idx = p.frame_index - self.current_session.start_frame
+                    relative_points.append(Point(
+                        x=p.x, y=p.y, label=p.label, 
+                        frame_index=rel_frame_idx, object_id=p.object_id
+                    ))
+                
+                # Generate updated mask
+                mask = self.annotation_service.add_point_annotation(
+                    point=relative_points[-1],  # Use last remaining point as reference
+                    all_points_for_object=relative_points
+                )
+                
+                # Update mask to use absolute frame index for storage
+                mask.frame_index = self.current_frame_index
+                mask.object_id = self.current_session.current_object_id
+                self.current_session.add_mask(mask)
+            else:
+                # No points left for this object on this frame - remove mask
+                frame_masks = self.current_session.get_masks_for_frame(self.current_frame_index)
+                if self.current_session.current_object_id in frame_masks:
+                    del self.current_session.masks[self.current_frame_index][self.current_session.current_object_id]
+            
+            # Force UI update
+            self._current_frame = None  # Force reload with overlay
+            self.notify_observers("annotation_removed", None, {"removed_point": removed_point})
+            
+            point_type = "positive" if removed_point.label == 1 else "negative"
+            self.status_message = f"Undone {point_type} point at ({removed_point.x}, {removed_point.y})"
+            
+            # Mark that we need to propagate when frame changes
+            self.current_session.needs_propagation = True
+            
+        except Exception as e:
+            self.status_message = f"Error undoing point: {str(e)}"
+            raise
+        finally:
+            self.is_processing = False
+    
     # Command validation methods
     def _can_play_pause(self) -> bool:
         return self.has_video and not self.is_processing
@@ -268,6 +404,14 @@ class VideoLabelerViewModel(Observable):
     
     def _can_add_point(self) -> bool:
         return self.has_video and not self.is_processing
+    
+    def _can_undo_point(self) -> bool:
+        return (self.has_video and not self.is_processing and 
+                self.current_session and len(self.current_session.points) > 0)
+    
+    def _can_propagate(self) -> bool:
+        return (self.has_video and not self.is_processing and 
+                self.current_session and self.current_session.is_initialized)
     
     def _has_annotations(self) -> bool:
         return self.has_annotations and not self.is_processing

@@ -103,24 +103,25 @@ class AnnotationService:
         self.labeler.init_inference_state(video_dir=frame_dir)
         self.frame_dir = frame_dir
     
-    def add_point_annotation(self, point: Point) -> Mask:
-        """Add a point annotation and return the generated mask"""
+    def add_point_annotation(self, point: Point, all_points_for_object: List[Point]) -> Mask:
+        """Add a point annotation and return the generated mask using all points for the object"""
         if not self.labeler:
             raise ValueError("Annotation service not initialized")
         
-        points = np.array([[point.x, point.y]])
-        labels = np.array([point.label], np.int32)
+        # Convert all points for this object to numpy arrays
+        points = np.array([[p.x, p.y] for p in all_points_for_object], dtype=np.float32)
+        labels = np.array([p.label for p in all_points_for_object], dtype=np.int32)
         
         _, mask_data = self.labeler.select_objects(
             points=points,
             labels=labels,
-            ann_obj_id=1,  # Using object ID 1 for now
+            ann_obj_id=point.object_id,
             ann_frame_idx=point.frame_index
         )
         
         return Mask(
             mask_data=mask_data,
-            object_id=1,
+            object_id=point.object_id,
             frame_index=point.frame_index
         )
     

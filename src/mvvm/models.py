@@ -14,6 +14,7 @@ class Point:
     y: int
     label: int  # 1 for positive, 0 for negative
     frame_index: int
+    object_id: int = 1  # Which object this point belongs to
 
 
 @dataclass
@@ -50,10 +51,18 @@ class AnnotationSession:
     masks: Dict[int, Dict[int, Mask]] = field(default_factory=dict)  # frame_index -> object_id -> mask
     frame_paths: List[str] = field(default_factory=list)  # Paths to extracted frame files
     is_initialized: bool = False
+    needs_propagation: bool = False  # Flag to indicate if propagation is needed
+    current_object_id: int = 1  # Track current object being annotated
     
     def add_point(self, point: Point):
         """Add a point annotation"""
         self.points.append(point)
+    
+    def remove_last_point(self) -> Optional[Point]:
+        """Remove and return the last point annotation"""
+        if self.points:
+            return self.points.pop()
+        return None
     
     def add_mask(self, mask: Mask):
         """Add a mask for a specific frame and object"""
@@ -68,6 +77,15 @@ class AnnotationSession:
     def get_points_for_frame(self, frame_index: int) -> List[Point]:
         """Get all points for a specific frame"""
         return [p for p in self.points if p.frame_index == frame_index]
+    
+    def get_points_for_object_on_frame(self, frame_index: int, object_id: int) -> List[Point]:
+        """Get all points for a specific object on a specific frame"""
+        return [p for p in self.points 
+                if p.frame_index == frame_index and hasattr(p, 'object_id') and p.object_id == object_id]
+    
+    def get_all_points_for_current_object_on_frame(self, frame_index: int) -> List[Point]:
+        """Get all points for the current object on a specific frame"""
+        return self.get_points_for_object_on_frame(frame_index, self.current_object_id)
 
 
 @dataclass

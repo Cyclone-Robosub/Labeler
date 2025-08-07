@@ -24,6 +24,11 @@ def main():
     print("  • Space: Next frame")
     print("  • File menu: Open video, save annotations")
     
+    print("\n✨ Smart Workflow:")
+    print("  • Click points → See immediate mask result")
+    print("  • Navigate frames → Auto-propagate through video")
+    print("  • Manual propagation available with button")
+    
     print("\n🚀 Starting application...")
     
     # Start the application
