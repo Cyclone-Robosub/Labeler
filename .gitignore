@@ -1,6 +1,58 @@
-dataset
-*.pt
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+sam2_checkpoint/*.pt
+*.mp4
+*.avi
+*.mov
+*/frames/
+output/
+temp/
+dataset/
 *.zip
-__pycache__
+
+# Generated files
 *.jpg
 *.txt
+*.log
+logs/

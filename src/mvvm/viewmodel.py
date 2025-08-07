@@ -1,0 +1,298 @@
+"""
+ViewModel layer - Contains presentation logic and coordinates between Model and View
+This ViewModel is UI-agnostic and can work with different frontend technologies
+"""
+import os
+from typing import Optional, List, Dict, Callable
+import numpy as np
+import cv2
+
+from .observable import Observable, ObservableProperty, Command
+from .models import VideoInfo, Point, Mask, AnnotationSession, ApplicationState
+from .services import VideoService, AnnotationService, ExportService
+
+
+class VideoLabelerViewModel(Observable):
+    """
+    Main ViewModel for the video labeling application
+    Contains all presentation logic without UI dependencies
+    """
+    
+    # Observable properties that UI can bind to
+    current_frame_index = ObservableProperty(0)
+    is_playing = ObservableProperty(False)
+    is_processing = ObservableProperty(False)
+    status_message = ObservableProperty("Ready")
+    
+    def __init__(self):
+        super().__init__()
+        
+        # Services (dependency injection ready)
+        self.video_service = VideoService()
+        self.annotation_service = AnnotationService()
+        self.export_service = ExportService()
+        
+        # Application state
+        self.app_state = ApplicationState()
+        self.current_session: Optional[AnnotationSession] = None
+        
+        # UI-agnostic commands
+        self.load_video_command = Command(self._load_video)
+        self.play_pause_command = Command(self._toggle_play_pause, self._can_play_pause)
+        self.next_frame_command = Command(self._next_frame, self._has_video)
+        self.previous_frame_command = Command(self._previous_frame, self._has_video)
+        self.jump_to_frame_command = Command(self._jump_to_frame, self._has_video)
+        self.add_point_command = Command(self._add_point, self._can_add_point)
+        self.save_annotations_command = Command(self._save_annotations, self._has_annotations)
+        self.export_coco_command = Command(self._export_coco, self._has_annotations)
+        
+        # Current frame data
+        self._current_frame: Optional[np.ndarray] = None
+        self._current_frame_with_overlay: Optional[np.ndarray] = None
+    
+    # Properties for UI binding
+    @property
+    def video_info(self) -> Optional[VideoInfo]:
+        return self.current_session.video_info if self.current_session else None
+    
+    @property
+    def total_frames(self) -> int:
+        return self.video_info.total_frames if self.video_info else 0
+    
+    @property
+    def current_time(self) -> float:
+        if not self.video_info or self.video_info.fps == 0:
+            return 0.0
+        return self.current_frame_index / self.video_info.fps
+    
+    @property
+    def has_video(self) -> bool:
+        return self.current_session is not None
+    
+    @property
+    def has_annotations(self) -> bool:
+        return (self.current_session is not None and 
+                (len(self.current_session.points) > 0 or len(self.current_session.masks) > 0))
+    
+    @property
+    def current_frame_points(self) -> List[Point]:
+        if not self.current_session:
+            return []
+        return self.current_session.get_points_for_frame(self.current_frame_index)
+    
+    @property
+    def current_frame_masks(self) -> Dict[int, Mask]:
+        if not self.current_session:
+            return {}
+        return self.current_session.get_masks_for_frame(self.current_frame_index)
+    
+    def get_current_frame(self) -> Optional[np.ndarray]:
+        """Get current frame data for display"""
+        if not self.has_video:
+            return None
+        
+        if self._current_frame is None:
+            self._current_frame = self.video_service.get_frame(self.current_frame_index)
+        
+        return self._current_frame
+    
+    def get_current_frame_with_overlay(self) -> Optional[np.ndarray]:
+        """Get current frame with annotations overlay"""
+        base_frame = self.get_current_frame()
+        if base_frame is None:
+            return None
+        
+        # Create a copy for overlay
+        frame_with_overlay = base_frame.copy()
+        
+        # Add masks overlay
+        for obj_id, mask in self.current_frame_masks.items():
+            frame_with_overlay = self._draw_mask_overlay(frame_with_overlay, mask.mask_data)
+        
+        # Add points overlay
+        for point in self.current_frame_points:
+            frame_with_overlay = self._draw_point_overlay(frame_with_overlay, point)
+        
+        return frame_with_overlay
+    
+    # Command implementations
+    def _load_video(self, video_path: str):
+        """Load a video file"""
+        try:
+            self.status_message = "Loading video..."
+            video_info = self.video_service.load_video(video_path)
+            
+            # Create new annotation session
+            self.current_session = AnnotationSession(video_info=video_info)
+            self.current_frame_index = 0
+            self._current_frame = None
+            
+            self.status_message = f"Video loaded: {os.path.basename(video_path)}"
+            self.notify_observers("video_loaded", None, video_info)
+            
+        except Exception as e:
+            self.status_message = f"Error loading video: {str(e)}"
+            raise
+    
+    def _toggle_play_pause(self):
+        """Toggle play/pause state"""
+        self.is_playing = not self.is_playing
+        self.status_message = "Playing" if self.is_playing else "Paused"
+    
+    def _next_frame(self):
+        """Advance to next frame"""
+        if self.current_frame_index < self.total_frames - 1:
+            self.current_frame_index += 1
+            self._current_frame = None  # Force reload
+    
+    def _previous_frame(self):
+        """Go to previous frame"""
+        if self.current_frame_index > 0:
+            self.current_frame_index -= 1
+            self._current_frame = None  # Force reload
+    
+    def _jump_to_frame(self, frame_index: int):
+        """Jump to specific frame"""
+        frame_index = max(0, min(frame_index, self.total_frames - 1))
+        if frame_index != self.current_frame_index:
+            self.current_frame_index = frame_index
+            self._current_frame = None  # Force reload
+    
+    def _add_point(self, x: int, y: int, label: int = 1):
+        """Add a point annotation"""
+        if not self.current_session:
+            return
+        
+        try:
+            self.is_processing = True
+            self.status_message = "Processing annotation..."
+            
+            # Check if this is the first annotation
+            if not self.current_session.is_initialized:
+                self._initialize_annotation_session()
+            
+            # Create point with absolute frame index for storage
+            point = Point(x=x, y=y, label=label, frame_index=self.current_frame_index)
+            
+            # Add to session
+            self.current_session.add_point(point)
+            
+            # Calculate relative frame index for SAM2 (relative to annotation start)
+            relative_frame_idx = self.current_frame_index - self.current_session.start_frame
+            
+            # Create a temporary point with relative frame index for annotation service
+            relative_point = Point(x=x, y=y, label=label, frame_index=relative_frame_idx)
+            
+            # Generate mask using annotation service
+            mask = self.annotation_service.add_point_annotation(relative_point)
+            # Update mask to use absolute frame index for storage
+            mask.frame_index = self.current_frame_index
+            self.current_session.add_mask(mask)
+            
+            # Propagate through video
+            all_masks = self.annotation_service.propagate_annotations()
+            
+            # Update session with all masks, converting relative to absolute frame indices
+            for relative_frame_idx, frame_masks in all_masks.items():
+                absolute_frame_idx = self.current_session.start_frame + relative_frame_idx
+                for obj_id, mask in frame_masks.items():
+                    # Update mask to use absolute frame index
+                    mask.frame_index = absolute_frame_idx
+                    self.current_session.add_mask(mask)
+            
+            self._current_frame = None  # Force reload with overlay
+            self.status_message = f"Added point annotation at ({x}, {y})"
+            
+        except Exception as e:
+            self.status_message = f"Error adding annotation: {str(e)}"
+            raise
+        finally:
+            self.is_processing = False
+    
+    def _initialize_annotation_session(self):
+        """Initialize annotation session for SAM2"""
+        if not self.current_session:
+            return
+        
+        # Extract frames from current position to end
+        video_name = os.path.basename(self.current_session.video_info.path).split('.')[0]
+        frame_dir = os.path.join(video_name, "frames")
+        
+        self.status_message = "Extracting frames..."
+        frame_paths = self.video_service.extract_frames_to_directory(
+            self.current_frame_index, frame_dir
+        )
+        
+        # Initialize annotation service
+        self.annotation_service.initialize_for_video(frame_dir)
+        
+        # Update session with frame paths and initialization status
+        self.current_session.start_frame = self.current_frame_index
+        self.current_session.frame_paths = frame_paths
+        self.current_session.is_initialized = True
+    
+    def _save_annotations(self, output_path: str):
+        """Save annotations to file"""
+        if not self.current_session:
+            return
+        
+        try:
+            self.status_message = "Saving annotations..."
+            # Implementation depends on desired format
+            # For now, export as COCO
+            self.export_service.export_to_coco(self.current_session, output_path)
+            self.status_message = f"Annotations saved to {output_path}"
+        except Exception as e:
+            self.status_message = f"Error saving annotations: {str(e)}"
+            raise
+    
+    def _export_coco(self, output_path: str, category_name: str = "block"):
+        """Export annotations in COCO format"""
+        if not self.current_session:
+            return
+        
+        try:
+            self.status_message = "Exporting to COCO format..."
+            self.export_service.export_to_coco(self.current_session, output_path, category_name)
+            self.status_message = f"Exported to COCO format: {output_path}"
+        except Exception as e:
+            self.status_message = f"Error exporting to COCO: {str(e)}"
+            raise
+    
+    # Command validation methods
+    def _can_play_pause(self) -> bool:
+        return self.has_video and not self.is_processing
+    
+    def _has_video(self) -> bool:
+        return self.has_video and not self.is_processing
+    
+    def _can_add_point(self) -> bool:
+        return self.has_video and not self.is_processing
+    
+    def _has_annotations(self) -> bool:
+        return self.has_annotations and not self.is_processing
+    
+    # Helper methods for visualization
+    def _draw_mask_overlay(self, frame: np.ndarray, mask: np.ndarray, alpha: float = 0.6) -> np.ndarray:
+        """Draw mask overlay on frame"""
+        color = (255, 0, 0)  # Blue in BGR
+        colored_mask = np.zeros_like(frame, dtype=np.uint8)
+        mask = np.squeeze(mask)
+        colored_mask[mask > 0] = color
+        return cv2.addWeighted(frame, 1.0, colored_mask, alpha, 0)
+    
+    def _draw_point_overlay(self, frame: np.ndarray, point: Point, marker_size: int = 8) -> np.ndarray:
+        """Draw point overlay on frame"""
+        color = (0, 255, 0) if point.label == 1 else (0, 0, 255)  # Green for positive, Red for negative
+        cv2.drawMarker(frame, (point.x, point.y), color, cv2.MARKER_STAR, 
+                      markerSize=marker_size, thickness=2)
+        # White border
+        cv2.drawMarker(frame, (point.x, point.y), (255, 255, 255), cv2.MARKER_STAR, 
+                      markerSize=marker_size, thickness=1)
+        return frame
+    
+    def cleanup(self):
+        """Clean up resources"""
+        self.video_service.cleanup()
+        self.current_session = None
+        self._current_frame = None
