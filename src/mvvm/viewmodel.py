@@ -8,7 +8,7 @@ import numpy as np
 import cv2
 
 from .observable import Observable, ObservableProperty, Command
-from .models import VideoInfo, Point, Mask, AnnotationSession, ApplicationState
+from .models import VideoInfo, Point, Mask, AnnotationSession, ApplicationState, ObjectDefinition
 from .services import VideoService, AnnotationService, ExportService
 
 
@@ -44,6 +44,8 @@ class VideoLabelerViewModel(Observable):
         self.jump_to_frame_command = Command(self._jump_to_frame, self._has_video)
         self.add_point_command = Command(self._add_point, self._can_add_point)
         self.undo_point_command = Command(self._undo_last_point, self._can_undo_point)
+        self.add_object_command = Command(self._add_object, self._has_video)
+        self.select_object_command = Command(self._select_object, self._has_objects)
         self.propagate_command = Command(self._propagate_annotations, self._can_propagate)
         self.save_annotations_command = Command(self._save_annotations, self._has_annotations)
         self.export_coco_command = Command(self._export_coco, self._has_annotations)
@@ -82,6 +84,26 @@ class VideoLabelerViewModel(Observable):
                 self.current_session.needs_propagation)
     
     @property
+    def available_objects(self) -> Dict[int, 'ObjectDefinition']:
+        """Get all available object definitions"""
+        if not self.current_session:
+            return {}
+        return self.current_session.objects
+    
+    @property
+    def current_object(self) -> Optional['ObjectDefinition']:
+        """Get the currently selected object"""
+        if not self.current_session:
+            return None
+        return self.current_session.get_current_object()
+    
+    @property
+    def current_object_name(self) -> str:
+        """Get the name of the currently selected object"""
+        obj = self.current_object
+        return obj.name if obj else "No object selected"
+    
+    @property
     def current_frame_points(self) -> List[Point]:
         if not self.current_session:
             return []
@@ -114,7 +136,7 @@ class VideoLabelerViewModel(Observable):
         
         # Add masks overlay
         for obj_id, mask in self.current_frame_masks.items():
-            frame_with_overlay = self._draw_mask_overlay(frame_with_overlay, mask.mask_data)
+            frame_with_overlay = self._draw_mask_overlay(frame_with_overlay, mask.mask_data, obj_id)
         
         # Add points overlay
         for point in self.current_frame_points:
@@ -179,6 +201,11 @@ class VideoLabelerViewModel(Observable):
         if not self.current_session:
             return
         
+        # Check if an object is selected
+        if self.current_session.current_object_id is None:
+            self.status_message = "Please add and select an object first"
+            return
+        
         try:
             self.is_processing = True
             self.status_message = "Processing annotation..."
@@ -230,7 +257,8 @@ class VideoLabelerViewModel(Observable):
             self.notify_observers("annotation_added", None, {"point": point, "mask": mask})
             
             point_type = "positive" if label == 1 else "negative"
-            self.status_message = f"Added {point_type} point at ({x}, {y}) - Mask updated"
+            object_name = self.current_object_name
+            self.status_message = f"Added {point_type} point for '{object_name}' at ({x}, {y})"
             
             # Mark that we need to propagate when frame changes
             self.current_session.needs_propagation = True
@@ -317,14 +345,14 @@ class VideoLabelerViewModel(Observable):
         self.current_session.needs_propagation = True
         self._propagate_if_needed()
     
-    def _export_coco(self, output_path: str, category_name: str = "block"):
+    def _export_coco(self, output_path: str):
         """Export annotations in COCO format"""
         if not self.current_session:
             return
         
         try:
             self.status_message = "Exporting to COCO format..."
-            self.export_service.export_to_coco(self.current_session, output_path, category_name)
+            self.export_service.export_to_coco(self.current_session, output_path)
             self.status_message = f"Exported to COCO format: {output_path}"
         except Exception as e:
             self.status_message = f"Error exporting to COCO: {str(e)}"
@@ -395,6 +423,49 @@ class VideoLabelerViewModel(Observable):
         finally:
             self.is_processing = False
     
+    def _add_object(self, object_name: str):
+        """Add a new object type for annotation"""
+        if not self.current_session:
+            return
+        
+        if not object_name or not object_name.strip():
+            self.status_message = "Object name cannot be empty"
+            return
+        
+        try:
+            # Check if object name already exists
+            for obj in self.current_session.objects.values():
+                if obj.name.lower() == object_name.lower().strip():
+                    self.status_message = f"Object '{object_name}' already exists"
+                    return
+            
+            # Add new object
+            new_object = self.current_session.add_object(object_name.strip())
+            self.status_message = f"Added object '{new_object.name}' (ID: {new_object.id})"
+            
+            # Notify observers
+            self.notify_observers("object_added", None, new_object)
+            
+        except Exception as e:
+            self.status_message = f"Error adding object: {str(e)}"
+            raise
+    
+    def _select_object(self, object_id: int):
+        """Select an object for annotation"""
+        if not self.current_session:
+            return
+        
+        if object_id not in self.current_session.objects:
+            self.status_message = f"Object ID {object_id} not found"
+            return
+        
+        self.current_session.set_current_object(object_id)
+        object_name = self.current_session.objects[object_id].name
+        self.status_message = f"Selected object '{object_name}' for annotation"
+        
+        # Notify observers
+        self.notify_observers("object_selected", None, {"object_id": object_id})
+    
     # Command validation methods
     def _can_play_pause(self) -> bool:
         return self.has_video and not self.is_processing
@@ -403,11 +474,16 @@ class VideoLabelerViewModel(Observable):
         return self.has_video and not self.is_processing
     
     def _can_add_point(self) -> bool:
-        return self.has_video and not self.is_processing
+        return (self.has_video and not self.is_processing and 
+                self.current_session and self.current_session.current_object_id is not None)
     
     def _can_undo_point(self) -> bool:
         return (self.has_video and not self.is_processing and 
                 self.current_session and len(self.current_session.points) > 0)
+    
+    def _has_objects(self) -> bool:
+        return (self.has_video and not self.is_processing and 
+                self.current_session and len(self.current_session.objects) > 0)
     
     def _can_propagate(self) -> bool:
         return (self.has_video and not self.is_processing and 
@@ -417,9 +493,13 @@ class VideoLabelerViewModel(Observable):
         return self.has_annotations and not self.is_processing
     
     # Helper methods for visualization
-    def _draw_mask_overlay(self, frame: np.ndarray, mask: np.ndarray, alpha: float = 0.6) -> np.ndarray:
-        """Draw mask overlay on frame"""
-        color = (255, 0, 0)  # Blue in BGR
+    def _draw_mask_overlay(self, frame: np.ndarray, mask: np.ndarray, object_id: int, alpha: float = 0.6) -> np.ndarray:
+        """Draw mask overlay on frame with object-specific color"""
+        # Get object color
+        color = (255, 0, 0)  # Default blue
+        if self.current_session and object_id in self.current_session.objects:
+            color = self.current_session.objects[object_id].color
+        
         colored_mask = np.zeros_like(frame, dtype=np.uint8)
         mask = np.squeeze(mask)
         colored_mask[mask > 0] = color

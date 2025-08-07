@@ -148,8 +148,47 @@ class ControlPanel(ttk.Frame):
     
     def _setup_ui(self):
         """Setup the control panel UI"""
+        # Object management controls
+        object_frame = ttk.LabelFrame(self, text="Object Management")
+        object_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        # Add object controls
+        add_obj_frame = ttk.Frame(object_frame)
+        add_obj_frame.pack(fill=tk.X, padx=5, pady=2)
+        
+        ttk.Label(add_obj_frame, text="Object name:").pack(side=tk.LEFT)
+        self.object_name_var = tk.StringVar()
+        self.object_name_entry = ttk.Entry(add_obj_frame, textvariable=self.object_name_var, width=15)
+        self.object_name_entry.pack(side=tk.LEFT, padx=(5, 2))
+        self.object_name_entry.bind("<Return>", lambda e: self._add_object())
+        
+        self.add_object_button = ttk.Button(
+            add_obj_frame, 
+            text="+ Add Object", 
+            command=self._add_object
+        )
+        self.add_object_button.pack(side=tk.LEFT, padx=2)
+        
+        # Object selection
+        select_obj_frame = ttk.Frame(object_frame)
+        select_obj_frame.pack(fill=tk.X, padx=5, pady=2)
+        
+        ttk.Label(select_obj_frame, text="Current object:").pack(side=tk.LEFT)
+        self.current_object_var = tk.StringVar(value="No objects")
+        self.object_combobox = ttk.Combobox(
+            select_obj_frame, 
+            textvariable=self.current_object_var,
+            state="readonly",
+            width=20
+        )
+        self.object_combobox.pack(side=tk.LEFT, padx=(5, 0))
+        self.object_combobox.bind("<<ComboboxSelected>>", self._on_object_selected)
+        
         # Navigation controls
-        controls_frame = ttk.Frame(self)
+        nav_frame = ttk.LabelFrame(self, text="Navigation")
+        nav_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        controls_frame = ttk.Frame(nav_frame)
         controls_frame.pack(fill=tk.X, padx=5, pady=5)
         
         ttk.Button(controls_frame, text="◀◀", command=self._jump_to_start).pack(side=tk.LEFT, padx=2)
@@ -158,7 +197,7 @@ class ControlPanel(ttk.Frame):
         ttk.Button(controls_frame, text="▶▶", command=self._jump_to_end).pack(side=tk.LEFT, padx=2)
         
         # Annotation controls
-        annotation_frame = ttk.Frame(self)
+        annotation_frame = ttk.LabelFrame(self, text="Annotation")
         annotation_frame.pack(fill=tk.X, padx=5, pady=5)
         
         self.undo_button = ttk.Button(
@@ -166,7 +205,7 @@ class ControlPanel(ttk.Frame):
             text="↶ Undo Last Point", 
             command=self._undo_last_point
         )
-        self.undo_button.pack(side=tk.LEFT, padx=2)
+        self.undo_button.pack(side=tk.LEFT, padx=2, pady=2)
         
         # Frame info
         info_frame = ttk.Frame(self)
@@ -215,6 +254,26 @@ class ControlPanel(ttk.Frame):
         self.viewmodel.add_observer("video_loaded", self._update_for_new_video)
         self.viewmodel.add_observer("is_processing", self._update_processing_state)
         self.viewmodel.add_observer("annotation_removed", self._update_undo_button)
+        self.viewmodel.add_observer("object_added", self._update_object_list)
+        self.viewmodel.add_observer("object_selected", self._update_current_object)
+    
+    def _add_object(self):
+        """Add a new object for annotation"""
+        object_name = self.object_name_var.get().strip()
+        if object_name:
+            self.viewmodel.add_object_command.execute(object_name)
+            self.object_name_var.set("")  # Clear the entry
+    
+    def _on_object_selected(self, event):
+        """Handle object selection from combobox"""
+        selection = self.object_combobox.get()
+        if " - " in selection:
+            # Extract object ID from selection (format: "ID - Name")
+            try:
+                object_id = int(selection.split(" - ")[0])
+                self.viewmodel.select_object_command.execute(object_id)
+            except (ValueError, IndexError):
+                pass
     
     def _undo_last_point(self):
         """Trigger undo of last point annotation"""
@@ -277,6 +336,41 @@ class ControlPanel(ttk.Frame):
             can_undo = (hasattr(self.viewmodel, '_can_undo_point') and 
                        self.viewmodel._can_undo_point())
             self.undo_button.configure(state='normal' if can_undo else 'disabled')
+    
+    def _update_object_list(self, property_name: str, old_value, new_value):
+        """Update object combobox when a new object is added"""
+        self._refresh_object_combobox()
+    
+    def _update_current_object(self, property_name: str, old_value, new_value):
+        """Update UI when object selection changes"""
+        self._refresh_object_combobox()
+    
+    def _refresh_object_combobox(self):
+        """Refresh the object selection combobox"""
+        if not hasattr(self, 'object_combobox'):
+            return
+        
+        # Get available objects
+        objects = self.viewmodel.available_objects
+        
+        if not objects:
+            self.object_combobox['values'] = []
+            self.current_object_var.set("No objects")
+            self.object_combobox.configure(state="disabled")
+            return
+        
+        # Create combobox values (format: "ID - Name")
+        values = [f"{obj.id} - {obj.name}" for obj in objects.values()]
+        self.object_combobox['values'] = values
+        self.object_combobox.configure(state="readonly")
+        
+        # Set current selection
+        current_obj = self.viewmodel.current_object
+        if current_obj:
+            current_value = f"{current_obj.id} - {current_obj.name}"
+            self.current_object_var.set(current_value)
+        else:
+            self.current_object_var.set("Select an object")
     
     def _update_propagation_indicator(self):
         """Update the propagation indicator based on viewmodel state"""
@@ -381,6 +475,8 @@ class MenuBar(tk.Menu):
             "MVVM Architecture Demo\n"
             "Uses SAM2 for object segmentation\n\n"
             "Controls:\n"
+            "• Add objects by name first\n"
+            "• Select object to annotate\n"
             "• Left click: Add positive point\n"
             "• Right click: Add negative point\n"
             "• Ctrl+Z: Undo last point\n"
@@ -388,10 +484,12 @@ class MenuBar(tk.Menu):
             "• Space: Next frame\n"
             "• Use File menu to open/save\n\n"
             "Workflow:\n"
-            "• Click multiple points on same object\n"
-            "• See immediate mask updates\n"
-            "• Navigate frames to auto-propagate\n"
-            "• Use undo to refine selections"
+            "1. Add object types (e.g., 'car', 'person')\n"
+            "2. Select object to annotate\n"
+            "3. Click multiple points on same object\n"
+            "4. Switch objects and repeat\n"
+            "5. Navigate frames to auto-propagate\n"
+            "6. Export multi-category COCO dataset"
         )
     
     def _exit_app(self):

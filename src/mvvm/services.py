@@ -152,14 +152,14 @@ class ExportService:
     def __init__(self):
         pass
     
-    def export_to_coco(self, session: AnnotationSession, output_path: str, category_name: str = "block"):
+    def export_to_coco(self, session: AnnotationSession, output_path: str):
         """Export annotation session to COCO format"""
         if not session.video_info:
             raise ValueError("No video information available")
         
         # Create COCO dataset
         dataset_name = f"{os.path.basename(session.video_info.path)}_annotations"
-        coco_dataset = COCODataset(dataset_name, category_name)
+        coco_dataset = COCODataset(dataset_name)
         
         # Add masks to dataset
         for absolute_frame_idx, frame_masks in session.masks.items():
@@ -167,13 +167,19 @@ class ExportService:
             relative_frame_idx = absolute_frame_idx - session.start_frame
             
             for obj_id, mask in frame_masks.items():
+                # Get object name
+                object_name = "unknown"
+                if obj_id in session.objects:
+                    object_name = session.objects[obj_id].name
+                
                 # Map relative frame index to extracted frame filename
                 if 0 <= relative_frame_idx < len(session.frame_paths):
                     image_filename = session.frame_paths[relative_frame_idx]
                     
                     coco_dataset.add_sam_mask(
                         mask=mask.mask_data,
-                        image_path=image_filename
+                        image_path=image_filename,
+                        object_name=object_name
                     )
         
         # Export to JSON

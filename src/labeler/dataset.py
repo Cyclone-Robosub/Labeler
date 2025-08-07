@@ -9,7 +9,7 @@ This module creates a COCO formated object detection dataset for 1 object.
 """
 
 class COCODataset:
-    def __init__(self, name="block_detection_dataset", object_name="block"):
+    def __init__(self, name="multi_object_detection_dataset"):
         self.coco_dataset = {
             "info": {
                 "year": 2025,
@@ -20,14 +20,27 @@ class COCODataset:
             "licenses": [],
             "images": [],
             "annotations": [],
-            "categories": [
-                {
-                    "id": 1,
-                    "name": object_name,
-                    "supercategory": "object"
-                }
-            ]
+            "categories": []
         }
+        self.category_id_map = {}  # Maps object_name -> category_id
+        self.next_category_id = 1
+    
+    def add_category(self, object_name: str) -> int:
+        """Add a new category and return its ID"""
+        if object_name in self.category_id_map:
+            return self.category_id_map[object_name]
+        
+        category_id = self.next_category_id
+        self.next_category_id += 1
+        
+        self.coco_dataset["categories"].append({
+            "id": category_id,
+            "name": object_name,
+            "supercategory": "object"
+        })
+        
+        self.category_id_map[object_name] = category_id
+        return category_id
 
     def mask_to_bbox(self, mask):
         """Convert binary mask to bounding box [x, y, width, height]"""
@@ -40,7 +53,7 @@ class COCODataset:
         
         return [int(x_min), int(y_min), int(x_max - x_min + 1), int(y_max - y_min + 1)]
 
-    def convert_mask_to_annotation(self, mask):
+    def convert_mask_to_annotation(self, mask, category_id: int):
         """
         Convert a binary mask to COCO annotation format.
         """
@@ -51,24 +64,28 @@ class COCODataset:
         return {
             "id": len(self.coco_dataset["annotations"]) + 1,
             "image_id": None,  # To be set when adding the image
-            "category_id": 1,
+            "category_id": category_id,
             "segmentation": None,
             "area": area,
             "bbox": [x, y, w, h],
             "iscrowd": 0
         }
     
-    def add_sam_mask(self, mask, image_path):
+    def add_sam_mask(self, mask, image_path, object_name: str):
         """
         Add a SAM mask to the dataset.
         
         Args:
             mask (numpy.ndarray): Binary mask of the object.
             image_path (str): Path to the corresponding image.
+            object_name (str): Name of the object category.
         """
         mask = np.squeeze(mask)
-
-        annotation = self.convert_mask_to_annotation(mask)
+        
+        # Get or create category ID for this object
+        category_id = self.add_category(object_name)
+        
+        annotation = self.convert_mask_to_annotation(mask, category_id)
         
         self.add_image(image_path, mask.shape[1], mask.shape[0], annotation)
 

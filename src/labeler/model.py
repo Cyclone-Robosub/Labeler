@@ -64,7 +64,18 @@ class Labeler:
             labels=labels,
         )
 
-        return out_obj_ids, (out_mask_logits[0] > 0.0).cpu().numpy()
+        # Find the mask for the specific object ID we're working with
+        # out_obj_ids contains all object IDs, out_mask_logits contains corresponding masks
+        mask_idx = None
+        for i, obj_id in enumerate(out_obj_ids):
+            if obj_id == ann_obj_id:
+                mask_idx = i
+                break
+        
+        if mask_idx is None:
+            raise ValueError(f"Object ID {ann_obj_id} not found in returned masks")
+        
+        return out_obj_ids, (out_mask_logits[mask_idx] > 0.0).cpu().numpy()
     
     def run_through_video(self):
         self.video_segments = {}

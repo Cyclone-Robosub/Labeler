@@ -8,6 +8,19 @@ import numpy as np
 
 
 @dataclass
+class ObjectDefinition:
+    """Represents an object type that can be annotated"""
+    id: int
+    name: str
+    color: Tuple[int, int, int] = (255, 0, 0)  # BGR color for visualization
+    
+    def __post_init__(self):
+        """Ensure we have a valid color tuple"""
+        if not isinstance(self.color, tuple) or len(self.color) != 3:
+            self.color = (255, 0, 0)  # Default to blue
+
+
+@dataclass
 class Point:
     """Represents a point annotation"""
     x: int
@@ -52,7 +65,48 @@ class AnnotationSession:
     frame_paths: List[str] = field(default_factory=list)  # Paths to extracted frame files
     is_initialized: bool = False
     needs_propagation: bool = False  # Flag to indicate if propagation is needed
-    current_object_id: int = 1  # Track current object being annotated
+    
+    # Multi-object support
+    objects: Dict[int, ObjectDefinition] = field(default_factory=dict)  # object_id -> ObjectDefinition
+    current_object_id: Optional[int] = None  # Currently selected object for annotation
+    next_object_id: int = 1  # Auto-incrementing object ID counter
+    
+    def add_object(self, name: str, color: Optional[Tuple[int, int, int]] = None) -> ObjectDefinition:
+        """Add a new object definition and return it"""
+        if color is None:
+            # Generate a color based on object ID
+            colors = [
+                (255, 0, 0),    # Blue
+                (0, 255, 0),    # Green  
+                (0, 0, 255),    # Red
+                (255, 255, 0),  # Cyan
+                (255, 0, 255),  # Magenta
+                (0, 255, 255),  # Yellow
+                (128, 0, 128),  # Purple
+                (255, 165, 0),  # Orange
+            ]
+            color = colors[self.next_object_id % len(colors)]
+        
+        obj_def = ObjectDefinition(id=self.next_object_id, name=name, color=color)
+        self.objects[self.next_object_id] = obj_def
+        
+        # Set as current object if it's the first one
+        if self.current_object_id is None:
+            self.current_object_id = self.next_object_id
+        
+        self.next_object_id += 1
+        return obj_def
+    
+    def get_current_object(self) -> Optional[ObjectDefinition]:
+        """Get the currently selected object definition"""
+        if self.current_object_id is None:
+            return None
+        return self.objects.get(self.current_object_id)
+    
+    def set_current_object(self, object_id: int):
+        """Set the current object for annotation"""
+        if object_id in self.objects:
+            self.current_object_id = object_id
     
     def add_point(self, point: Point):
         """Add a point annotation"""
@@ -81,10 +135,12 @@ class AnnotationSession:
     def get_points_for_object_on_frame(self, frame_index: int, object_id: int) -> List[Point]:
         """Get all points for a specific object on a specific frame"""
         return [p for p in self.points 
-                if p.frame_index == frame_index and hasattr(p, 'object_id') and p.object_id == object_id]
+                if p.frame_index == frame_index and p.object_id == object_id]
     
     def get_all_points_for_current_object_on_frame(self, frame_index: int) -> List[Point]:
         """Get all points for the current object on a specific frame"""
+        if self.current_object_id is None:
+            return []
         return self.get_points_for_object_on_frame(frame_index, self.current_object_id)
 
 
