@@ -400,8 +400,8 @@ class MenuBar(tk.Menu):
         file_menu = tk.Menu(self, tearoff=0)
         file_menu.add_command(label="Open Video...", command=self._open_video)
         file_menu.add_separator()
-        file_menu.add_command(label="Save Annotations...", command=self._save_annotations)
-        file_menu.add_command(label="Export COCO...", command=self._export_coco)
+        file_menu.add_command(label="Export COCO (All)...", command=self._export_coco)
+        file_menu.add_command(label="Export COCO (Current Range)...", command=self._export_coco_partial)
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self._exit_app)
         
@@ -429,25 +429,6 @@ class MenuBar(tk.Menu):
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to load video:\n{str(e)}")
     
-    def _save_annotations(self):
-        """Save annotations dialog"""
-        if not self.viewmodel.has_annotations:
-            messagebox.showwarning("Warning", "No annotations to save")
-            return
-        
-        file_path = filedialog.asksaveasfilename(
-            title="Save Annotations",
-            defaultextension=".json",
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
-        )
-        
-        if file_path:
-            try:
-                self.viewmodel.save_annotations_command.execute(file_path)
-                messagebox.showinfo("Success", "Annotations saved successfully")
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to save annotations:\n{str(e)}")
-    
     def _export_coco(self):
         """Export COCO format dialog"""
         if not self.viewmodel.has_annotations:
@@ -455,7 +436,7 @@ class MenuBar(tk.Menu):
             return
         
         file_path = filedialog.asksaveasfilename(
-            title="Export COCO Annotations",
+            title="Export COCO Annotations (All)",
             defaultextension=".json",
             filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
         )
@@ -466,6 +447,38 @@ class MenuBar(tk.Menu):
                 messagebox.showinfo("Success", "COCO annotations exported successfully")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to export COCO:\n{str(e)}")
+    
+    def _export_coco_partial(self):
+        """Export COCO format dialog for current range only"""
+        if not self.viewmodel.has_annotations:
+            messagebox.showwarning("Warning", "No annotations to export")
+            return
+        
+        # Show info about the range being exported
+        start_frame = self.viewmodel.current_session.start_frame if self.viewmodel.current_session else 0
+        current_frame = start_frame + self.viewmodel.current_frame_index
+        
+        result = messagebox.askyesno(
+            "Export Current Range", 
+            f"This will export annotations from frame {start_frame} to frame {current_frame}.\n\n"
+            f"Do you want to continue?"
+        )
+        
+        if not result:
+            return
+        
+        file_path = filedialog.asksaveasfilename(
+            title="Export COCO Annotations (Current Range)",
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+        )
+        
+        if file_path:
+            try:
+                self.viewmodel.export_coco_partial_command.execute(file_path)
+                messagebox.showinfo("Success", f"COCO annotations exported successfully\n(Frames {start_frame} to {current_frame})")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to export partial COCO:\n{str(e)}")
     
     def _show_about(self):
         """Show about dialog"""

@@ -47,8 +47,8 @@ class VideoLabelerViewModel(Observable):
         self.add_object_command = Command(self._add_object, self._has_video)
         self.select_object_command = Command(self._select_object, self._has_objects)
         self.propagate_command = Command(self._propagate_annotations, self._can_propagate)
-        self.save_annotations_command = Command(self._save_annotations, self._has_annotations)
         self.export_coco_command = Command(self._export_coco, self._has_annotations)
+        self.export_coco_partial_command = Command(self._export_coco_partial, self._has_annotations)
         
         # Current frame data
         self._current_frame: Optional[np.ndarray] = None
@@ -321,21 +321,6 @@ class VideoLabelerViewModel(Observable):
         self.current_session.frame_paths = frame_paths
         self.current_session.is_initialized = True
     
-    def _save_annotations(self, output_path: str):
-        """Save annotations to file"""
-        if not self.current_session:
-            return
-        
-        try:
-            self.status_message = "Saving annotations..."
-            # Implementation depends on desired format
-            # For now, export as COCO
-            self.export_service.export_to_coco(self.current_session, output_path)
-            self.status_message = f"Annotations saved to {output_path}"
-        except Exception as e:
-            self.status_message = f"Error saving annotations: {str(e)}"
-            raise
-    
     def _propagate_annotations(self):
         """Manually trigger annotation propagation through video"""
         if not self.current_session:
@@ -356,6 +341,21 @@ class VideoLabelerViewModel(Observable):
             self.status_message = f"Exported to COCO format: {output_path}"
         except Exception as e:
             self.status_message = f"Error exporting to COCO: {str(e)}"
+            raise
+    
+    def _export_coco_partial(self, output_path: str):
+        """Export annotations in COCO format from start frame to current frame only"""
+        if not self.current_session:
+            return
+        
+        try:
+            self.status_message = "Exporting partial annotations to COCO format..."
+            # Convert current frame index to absolute frame index
+            end_frame = self.current_session.start_frame + self.current_frame_index
+            self.export_service.export_to_coco_partial(self.current_session, output_path, end_frame)
+            self.status_message = f"Exported partial annotations to COCO format: {output_path}"
+        except Exception as e:
+            self.status_message = f"Error exporting partial COCO: {str(e)}"
             raise
     
     def _undo_last_point(self):

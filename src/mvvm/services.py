@@ -189,3 +189,45 @@ class ExportService:
         # Export to JSON
         coco_dataset.export_to_json(output_path)
         return output_path
+    
+    def export_to_coco_partial(self, session: AnnotationSession, output_path: str, end_frame: int):
+        """Export annotation session to COCO format from start_frame to end_frame only"""
+        if not session.video_info:
+            raise ValueError("No video information available")
+        
+        # Create COCO dataset
+        dataset_name = f"{os.path.basename(session.video_info.path)}_annotations_partial"
+        coco_dataset = COCODataset(dataset_name)
+        
+        # Add masks to dataset only for frames within the range
+        for absolute_frame_idx, frame_masks in session.masks.items():
+            # Only export frames from start_frame to end_frame (inclusive)
+            if not (session.start_frame <= absolute_frame_idx <= end_frame):
+                continue
+                
+            # Convert absolute frame index to relative (for extracted frames)
+            relative_frame_idx = absolute_frame_idx - session.start_frame
+            
+            for obj_id, mask in frame_masks.items():
+                # Skip empty masks (all zeros)
+                if not np.any(mask.mask_data):
+                    continue
+                
+                # Get object name
+                object_name = "unknown"
+                if obj_id in session.objects:
+                    object_name = session.objects[obj_id].name
+                
+                # Map relative frame index to extracted frame filename
+                if 0 <= relative_frame_idx < len(session.frame_paths):
+                    image_filename = session.frame_paths[relative_frame_idx]
+                    
+                    coco_dataset.add_sam_mask(
+                        mask=mask.mask_data,
+                        image_path=image_filename,
+                        object_name=object_name
+                    )
+        
+        # Export to JSON
+        coco_dataset.export_to_json(output_path)
+        return output_path
