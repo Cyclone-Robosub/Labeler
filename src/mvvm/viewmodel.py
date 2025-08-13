@@ -146,17 +146,39 @@ class VideoLabelerViewModel(Observable):
     
     # Command implementations
     def _load_video(self, video_path: str):
-        """Load a video file"""
+        """Load a video file, preserving object classes if they exist"""
         try:
             self.status_message = "Loading video..."
+            
+            # Preserve existing object definitions if we have a current session
+            existing_objects = {}
+            current_object_id = None
+            next_object_id = 1
+            
+            if self.current_session:
+                existing_objects = self.current_session.objects.copy()
+                current_object_id = self.current_session.current_object_id
+                next_object_id = self.current_session.next_object_id
+                self.status_message = "Loading video (preserving objects)..."
+            
+            # Load new video
             video_info = self.video_service.load_video(video_path)
             
             # Create new annotation session
             self.current_session = AnnotationSession(video_info=video_info)
+            
+            # Restore object definitions if they existed
+            if existing_objects:
+                self.current_session.objects = existing_objects
+                self.current_session.current_object_id = current_object_id
+                self.current_session.next_object_id = next_object_id
+                self.status_message = f"Video loaded: {os.path.basename(video_path)} (objects preserved)"
+            else:
+                self.status_message = f"Video loaded: {os.path.basename(video_path)}"
+            
             self.current_frame_index = 0
             self._current_frame = None
             
-            self.status_message = f"Video loaded: {os.path.basename(video_path)}"
             self.notify_observers("video_loaded", None, video_info)
             
         except Exception as e:
@@ -313,7 +335,7 @@ class VideoLabelerViewModel(Observable):
             self.current_frame_index, frame_dir
         )
         
-        # Initialize annotation service
+        # Initialize annotation service (init_inference_state automatically resets)
         self.annotation_service.initialize_for_video(frame_dir)
         
         # Update session with frame paths and initialization status

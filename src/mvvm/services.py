@@ -99,7 +99,10 @@ class AnnotationService:
     
     def initialize_for_video(self, frame_dir: str):
         """Initialize SAM2 labeler for a video"""
-        self.labeler = Labeler(self.model_path)
+        if not self.labeler:
+            self.labeler = Labeler(self.model_path)
+        
+        # init_inference_state automatically resets, so we can reuse the same labeler
         self.labeler.init_inference_state(video_dir=frame_dir)
         self.frame_dir = frame_dir
     

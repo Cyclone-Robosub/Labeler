@@ -53,6 +53,7 @@ class Labeler:
 
     def init_inference_state(self, video_dir):
         self.inference_state = self.predictor.init_state(video_path=video_dir)
+        self.predictor.reset_state(self.inference_state)
 
     def select_objects(self, points, labels, ann_obj_id, ann_frame_idx=0):
 
