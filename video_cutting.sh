@@ -1,32 +1,29 @@
-# input="video.mp4"
-# ffmpeg -i "$input" -ss 00:00:30 -t 00:01:00 -c copy "${input%.*}_cut.${input##*.}"
-# Output: video_cut.mp4
-
-input="raw_files/IMG_2506.M4V"
-ffmpeg -i "$input" -ss 00:00:31.88 -to 00:00:37.00 -c copy "${input%.*}_cut_1.mp4"
-
-ffmpeg -i "$input" -ss 00:01:12.00 -to 00:01:22.00 -c copy "${input%.*}_cut_2.mp4"
-
-ffmpeg -i "$input" -ss 00:01:38.47 -to 00:01:45.12 -c copy "${input%.*}_cut_3.mp4"
-
-ffmpeg -i "$input" -ss 00:01:52.19 -to 00:02:16.00 -c copy "${input%.*}_cut_4.mp4"
-
-ffmpeg -i "$input" -ss 00:02:23.09 -to 00:02:29.27 -c copy "${input%.*}_cut_4.mp4"
-
-ffmpeg -i "$input" -ss 00:02:29.27 -to 00:02:50.00 -c copy "${input%.*}_cut_5.mp4"
-
-input="raw_files/IMG_2508.M4V"
-
-ffmpeg -i "$input" -ss 00:00:05.46 -to 00:00:10.00 -c copy "${input%.*}_cut_0.mp4"
-
-ffmpeg -i "$input" -ss 00:00:10.00 -to 00:00:15.00 -c copy "${input%.*}_cut_1.mp4"
-
-ffmpeg -i "$input" -ss 00:00:15.00 -to 00:00:20.00 -c copy "${input%.*}_cut_2.mp4"
-
-ffmpeg -i "$input" -ss 00:00:20.00 -to 00:00:25.00 -c copy "${input%.*}_cut_3.mp4"
-
-ffmpeg -i "$input" -ss 00:00:25.00 -to 00:00:30.48 -c copy "${input%.*}_cut_4.mp4"
+#!/bin/bash
 
 input="raw_files/IMG_2509.M4V"
 
-ffmpeg -i "$input" -ss 00:00:05.46 -to 00:00:10.00 -c copy "${input%.*}_cut_0.mp4"
+# Get video duration in seconds (with decimals)
+duration=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$input")
+
+# Convert to integer seconds (ceil so we don't miss the last bit)
+total_seconds=$(printf "%.0f" "$duration")
+
+chunk_length=5
+counter=0
+start=0
+
+while [ "$start" -lt "$total_seconds" ]; do
+    end=$(( start + chunk_length ))
+
+    # Don't go past total duration
+    if [ "$end" -gt "$total_seconds" ]; then
+        end=$total_seconds
+    fi
+
+    ffmpeg -i "$input" -ss "$(printf '%02d:%02d:%05.2f' $((start/3600)) $(( (start/60)%60 )) $(bc <<< "$start%60"))" \
+           -to "$(printf '%02d:%02d:%05.2f' $((end/3600)) $(( (end/60)%60 )) $(bc <<< "$end%60"))" \
+           -c copy "${input%.*}_cut_${counter}.mp4"
+
+    start=$end
+    counter=$(( counter + 1 ))
+done

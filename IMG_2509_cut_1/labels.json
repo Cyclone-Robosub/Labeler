@@ -1,0 +1,40 @@
+{
+    "info": {
+        "year": 2025,
+        "version": "1.0",
+        "description": "IMG_2509_cut_1.mp4_annotations",
+        "date_created": "2025-08-13T16:06:16.268436"
+    },
+    "licenses": [],
+    "images": [
+        {
+            "id": 1,
+            "file_name": "00000.jpg",
+            "width": 1920,
+            "height": 1080
+        }
+    ],
+    "annotations": [
+        {
+            "id": 1,
+            "image_id": 1,
+            "category_id": 1,
+            "segmentation": null,
+            "area": 61596,
+            "bbox": [
+                818,
+                309,
+                348,
+                177
+            ],
+            "iscrowd": 0
+        }
+    ],
+    "categories": [
+        {
+            "id": 1,
+            "name": "ReefShark_gate",
+            "supercategory": "object"
+        }
+    ]
+}
