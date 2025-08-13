@@ -167,6 +167,10 @@ class ExportService:
             relative_frame_idx = absolute_frame_idx - session.start_frame
             
             for obj_id, mask in frame_masks.items():
+                # Skip empty masks (all zeros)
+                if not np.any(mask.mask_data):
+                    continue
+                
                 # Get object name
                 object_name = "unknown"
                 if obj_id in session.objects:
