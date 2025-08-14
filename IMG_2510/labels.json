@@ -1,0 +1,180 @@
+{
+    "info": {
+        "year": 2025,
+        "version": "1.0",
+        "description": "IMG_2510.MP4_annotations",
+        "date_created": "2025-08-13T23:15:56.248127"
+    },
+    "licenses": [],
+    "images": [
+        {
+            "id": 1,
+            "file_name": "00000.jpg",
+            "width": 1280,
+            "height": 720
+        },
+        {
+            "id": 2,
+            "file_name": "00001.jpg",
+            "width": 1280,
+            "height": 720
+        },
+        {
+            "id": 3,
+            "file_name": "00002.jpg",
+            "width": 1280,
+            "height": 720
+        },
+        {
+            "id": 4,
+            "file_name": "00003.jpg",
+            "width": 1280,
+            "height": 720
+        },
+        {
+            "id": 5,
+            "file_name": "00004.jpg",
+            "width": 1280,
+            "height": 720
+        },
+        {
+            "id": 6,
+            "file_name": "00005.jpg",
+            "width": 1280,
+            "height": 720
+        },
+        {
+            "id": 7,
+            "file_name": "00006.jpg",
+            "width": 1280,
+            "height": 720
+        },
+        {
+            "id": 8,
+            "file_name": "00007.jpg",
+            "width": 1280,
+            "height": 720
+        }
+    ],
+    "annotations": [
+        {
+            "id": 1,
+            "image_id": 1,
+            "category_id": 1,
+            "segmentation": null,
+            "area": 24064,
+            "bbox": [
+                292,
+                0,
+                376,
+                64
+            ],
+            "iscrowd": 0
+        },
+        {
+            "id": 2,
+            "image_id": 2,
+            "category_id": 1,
+            "segmentation": null,
+            "area": 44232,
+            "bbox": [
+                249,
+                0,
+                456,
+                97
+            ],
+            "iscrowd": 0
+        },
+        {
+            "id": 3,
+            "image_id": 3,
+            "category_id": 1,
+            "segmentation": null,
+            "area": 73134,
+            "bbox": [
+                215,
+                0,
+                478,
+                153
+            ],
+            "iscrowd": 0
+        },
+        {
+            "id": 4,
+            "image_id": 4,
+            "category_id": 1,
+            "segmentation": null,
+            "area": 93558,
+            "bbox": [
+                167,
+                0,
+                503,
+                186
+            ],
+            "iscrowd": 0
+        },
+        {
+            "id": 5,
+            "image_id": 5,
+            "category_id": 1,
+            "segmentation": null,
+            "area": 119476,
+            "bbox": [
+                153,
+                43,
+                502,
+                238
+            ],
+            "iscrowd": 0
+        },
+        {
+            "id": 6,
+            "image_id": 6,
+            "category_id": 1,
+            "segmentation": null,
+            "area": 120741,
+            "bbox": [
+                146,
+                146,
+                501,
+                241
+            ],
+            "iscrowd": 0
+        },
+        {
+            "id": 7,
+            "image_id": 7,
+            "category_id": 1,
+            "segmentation": null,
+            "area": 118737,
+            "bbox": [
+                146,
+                215,
+                501,
+                237
+            ],
+            "iscrowd": 0
+        },
+        {
+            "id": 8,
+            "image_id": 8,
+            "category_id": 1,
+            "segmentation": null,
+            "area": 136500,
+            "bbox": [
+                149,
+                263,
+                500,
+                273
+            ],
+            "iscrowd": 0
+        }
+    ],
+    "categories": [
+        {
+            "id": 1,
+            "name": "ReefShark_gate",
+            "supercategory": "object"
+        }
+    ]
+}
