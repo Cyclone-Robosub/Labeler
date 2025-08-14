@@ -3,7 +3,7 @@
 # Check for input file 
 if [ -z "$1" ]; then
     echo "Usage: $0 [input_video]"
-    exit 1
+    return 1
 fi
 
 input="$1"
@@ -11,7 +11,7 @@ input="$1"
 # Check if file exists
 if [ ! -f "$input" ]; then
     echo "Error: File '$input' not found!"
-    exit 1
+    return 1
 fi
 
 # Get video duration (seconds)
