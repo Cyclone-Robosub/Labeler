@@ -54,7 +54,7 @@ def convert_coco_to_yolo(coco_json_path, output_dir, class_mapping=None):
     
     # Create category mapping if not provided
     if class_mapping is None:
-        categories = {cat['id']: idx for idx, cat in enumerate(sorted(coco_data['categories']))}
+        categories = {cat['id']: idx for idx, cat in enumerate(sorted(coco_data['categories'], key=lambda x: x['id']))}
     else:
         categories = class_mapping
     
