@@ -54,7 +54,7 @@ def convert_coco_to_yolo(coco_json_path, output_dir, class_mapping=None):
     
     # Create category mapping if not provided
     if class_mapping is None:
-        categories = {cat['id']: idx for idx, cat in enumerate(coco_data['categories'])}
+        categories = {cat['id']: idx for idx, cat in enumerate(sorted(coco_data['categories'], key=lambda x: x['id']))}
     else:
         categories = class_mapping
     
@@ -153,17 +153,17 @@ if __name__ == "__main__":
     # Example usage
     coco_json_path = f"{folder_name}/labels.json"
     output_dir = f"{folder_name}/yolo"
-    # yaml_path = f"{folder_name}/dataset.yaml"
+    yaml_path = f"dataset.yaml"
     
     # Convert annotations
     convert_coco_to_yolo(coco_json_path, output_dir)
     
     # Create YAML config
-    # create_yolo_yaml(coco_json_path, yaml_path)
+    create_yolo_yaml(coco_json_path, yaml_path)
     
     print("\nConversion complete!")
     print(f"YOLO annotations saved to: {output_dir}")
-    # print(f"YOLO config saved to: {yaml_path}")
+    print(f"YOLO config saved to: {yaml_path}")
     
     # Optional: Create custom class mapping
     # custom_mapping = {1: 0, 2: 1, 3: 2}  # Maps COCO cat_id to YOLO class_id
