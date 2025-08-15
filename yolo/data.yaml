@@ -4,4 +4,5 @@ val: test
 
 # Classes
 names:
-  0: block
+  0: ReefShark_gate
+  1: SawFish_gate
