@@ -10,3 +10,6 @@ pip install -r requirements.txt
 ```bash
 python run_labeler.py
 ```
+
+#### Demo
+![Demo](docs/demo.webm)
