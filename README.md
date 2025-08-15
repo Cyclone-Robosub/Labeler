@@ -12,4 +12,4 @@ python run_labeler.py
 ```
 
 #### Demo
-![Demo](docs/demo.webm)
+![Demo](docs/demo.gif)
